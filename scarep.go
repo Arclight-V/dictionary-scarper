@@ -71,6 +71,15 @@ func getWordByPartOfSpeaches(english_words []EnglishWord, part_of_speaches strin
 	return word
 }
 
+func deleteToIsWordVerbEnglish(english_words []EnglishWord) []EnglishWord {
+	for i, v := range english_words {
+		if strings.Contains(v.PartOfTheSpeache, "verb") && strings.HasPrefix(v.Translate, "to ") {
+			english_words[i].Translate = strings.TrimLeft(english_words[i].Translate, "to ")
+		}
+	}
+	return english_words
+}
+
 func searchWord(lookingWord Word) EnglishFrench {
 	// initialize the struct slices
 
@@ -115,6 +124,7 @@ func searchWord(lookingWord Word) EnglishFrench {
 	}
 
 	word_to_add := getWordByPartOfSpeaches(englishWords, lookingWord.PartOfTheSpeache)
+	word_to_add = deleteToIsWordVerbEnglish(word_to_add)
 	// --- export to CSV ---
 
 	// open the output CSV file
