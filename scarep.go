@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	// import Colly
+
+	"github.com/atselvan/ankiconnect"
 	"github.com/gocolly/colly"
 )
 
@@ -261,6 +263,7 @@ func main() {
 	flag.Parse()
 
 	words_in_file := readWordsFromFile(fileToRead)
+
 	for _, v := range words_in_file {
 		word_to_add_first := searchWord(v)
 
@@ -301,6 +304,22 @@ func main() {
 			export(efr)
 		}
 
+		client := ankiconnect.NewClient()
+
+		note := ankiconnect.Note{
+			DeckName:  "New Deck",
+			ModelName: "Basic (three reversed card)",
+			Fields: ankiconnect.Fields{
+				"Front": "<h1>" + efr.English.Word.WordToTranslate + "</h1>" + "<br></br>" + efr.English.Word.PartOfTheSpeache + "<br />" + efr.English.Word.Transcripton,
+				"Back":  "<h1>" + efr.French.Word.WordToTranslate + "</h1>" + "<br></br>" + efr.French.Word.PartOfTheSpeache + "<br />" + efr.French.Word.Transcripton,
+				"three": efr.Russian.Translate,
+			},
+		}
+
+		restErr := client.Notes.Add(note)
+		if restErr != nil {
+			log.Fatal(restErr)
+		}
 	}
 
 }
