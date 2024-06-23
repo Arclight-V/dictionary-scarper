@@ -114,10 +114,19 @@ func deleteToIsWordVerbEnglish(english_words []TranslateWord) []TranslateWord {
 }
 
 func export(word_to_add EnglishFrenchRussian) {
+	// --- create export dir
+	path := "export"
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		err := os.Mkdir(path, os.ModePerm)
+		if err != nil {
+			log.Println(err)
+		}
+	}
+
 	// --- export to CSV ---
 
 	// open the output CSV file
-	csvFile, csvErr := os.Create(word_to_add.English.Word.WordToTranslate + ".csv")
+	csvFile, csvErr := os.Create(path + "/" + word_to_add.English.Word.WordToTranslate + ".csv")
 	// if the file creation fails
 	if csvErr != nil {
 		log.Fatalln("Failed to create the output CSV file", csvErr)
@@ -164,7 +173,7 @@ func export(word_to_add EnglishFrenchRussian) {
 	// --- export to JSON ---
 
 	// open the output JSON file
-	jsonFile, jsonErr := os.Create(word_to_add.English.Word.WordToTranslate + ".json")
+	jsonFile, jsonErr := os.Create(path + "/" + word_to_add.English.Word.WordToTranslate + ".json")
 	if jsonErr != nil {
 		log.Fatalln("Failed to create the output JSON file", jsonErr)
 	}
@@ -248,6 +257,7 @@ func searchWord(lookingWord WordInfo) []TranslateWord {
 func main() {
 
 	fileToRead := flag.String("input", "/Users/vladimir/Documents/words.txt", "a file with a list of words to translate")
+	isExport := flag.Bool("export", false, "exporting json and csv files to the export directory")
 	flag.Parse()
 
 	words_in_file := readWordsFromFile(fileToRead)
@@ -287,7 +297,9 @@ func main() {
 			efr.Russian = word_to_add_third[0]
 		}
 
-		export(efr)
+		if *isExport {
+			export(efr)
+		}
 
 	}
 
