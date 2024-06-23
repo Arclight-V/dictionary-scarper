@@ -101,10 +101,6 @@ func searchWord(lookingWord Word) EnglishFrench {
 		translate = append(translate, strings.Trim(texts[1], " "))
 	})
 
-	for i := 0; i < len(translate) && i < len(englishWords); i++ {
-		englishWords[i].Translate = translate[i]
-	}
-
 	// connect to the target site
 	var url string
 	if lookingWord.Language == "en" {
@@ -113,6 +109,10 @@ func searchWord(lookingWord Word) EnglishFrench {
 		url = "https://dictionary.cambridge.org/dictionary/french-english/" + lookingWord.WordToTranslate
 	}
 	c.Visit(url)
+
+	for i := 0; i < len(translate) && i < len(englishWords); i++ {
+		englishWords[i].Translate = translate[i]
+	}
 
 	word_to_add := getWordByPartOfSpeaches(englishWords, lookingWord.PartOfTheSpeache)
 	// --- export to CSV ---
