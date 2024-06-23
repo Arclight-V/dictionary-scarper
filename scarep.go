@@ -63,7 +63,7 @@ func readWordsFromFile(inputFile *string) []Word {
 func getWordByPartOfSpeaches(english_words []EnglishWord, part_of_speaches string) []EnglishWord {
 	var word []EnglishWord
 	for _, v := range english_words {
-		if v.PartOfTheSpeache == part_of_speaches {
+		if strings.Contains(v.PartOfTheSpeache, part_of_speaches) {
 			word = append(word, v)
 			break
 		}
