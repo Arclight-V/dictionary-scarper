@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"flag"
 	"log"
 	"os"
@@ -16,21 +17,29 @@ import (
 
 // definr some data structures
 // to store the scraped data
-type EnglishWord struct {
-	Word, PartOfTheSpeache, Transcripton, Translate string
+
+type Language int
+
+const (
+	english_french Language = iota
+	french_english
+	english_russian
+)
+
+type WordInfo struct {
+	WordToTranslate, PartOfTheSpeache, Transcripton string
+	Lang                                            Language
 }
 
-type FrenchWord struct {
-	Word, PartOfTheSpeache, Transcripton string
+type TranslateWord struct {
+	Word      WordInfo
+	Translate string
 }
 
-type EnglishFrench struct {
-	English EnglishWord
-	French  FrenchWord
-}
-
-type Word struct {
-	WordToTranslate, PartOfTheSpeache, Language string
+type EnglishFrenchRussian struct {
+	English TranslateWord
+	French  TranslateWord
+	Russian TranslateWord
 }
 
 func check(e error) {
@@ -39,19 +48,43 @@ func check(e error) {
 	}
 }
 
-func readWordsFromFile(inputFile *string) []Word {
+func checkLanguages(str string) Language {
+	switch str {
+	case "fr-en":
+		return french_english
+	case "en-fr":
+		return english_french
+	case "en-ru":
+		return english_russian
+	default:
+		panic(errors.New("The language " + str + " is not supported"))
+	}
+}
+
+func setTranslateLanguages(lang Language) Language {
+	switch lang {
+	case french_english:
+		return english_french
+	case english_french:
+		return french_english
+	default:
+		return english_french
+	}
+}
+
+func readWordsFromFile(inputFile *string) []WordInfo {
 	readFile, err := os.Open(*inputFile)
 	check(err)
 	fileScanner := bufio.NewScanner(readFile)
 	fileScanner.Split(bufio.ScanLines)
 
-	var words []Word
+	var words []WordInfo
 	for fileScanner.Scan() {
 		word_info := strings.Fields(fileScanner.Text())
-		word := Word{
+		word := WordInfo{
 			WordToTranslate:  word_info[0],
 			PartOfTheSpeache: word_info[1],
-			Language:         word_info[2],
+			Lang:             checkLanguages(word_info[2]),
 		}
 		words = append(words, word)
 	}
@@ -60,10 +93,10 @@ func readWordsFromFile(inputFile *string) []Word {
 
 }
 
-func getWordByPartOfSpeaches(english_words []EnglishWord, part_of_speaches string) []EnglishWord {
-	var word []EnglishWord
+func getWordByPartOfSpeaches(english_words []TranslateWord, part_of_speaches string) []TranslateWord {
+	var word []TranslateWord
 	for _, v := range english_words {
-		if strings.Contains(v.PartOfTheSpeache, part_of_speaches) {
+		if strings.Contains(v.Word.PartOfTheSpeache, part_of_speaches) {
 			word = append(word, v)
 			break
 		}
@@ -71,64 +104,20 @@ func getWordByPartOfSpeaches(english_words []EnglishWord, part_of_speaches strin
 	return word
 }
 
-func deleteToIsWordVerbEnglish(english_words []EnglishWord) []EnglishWord {
+func deleteToIsWordVerbEnglish(english_words []TranslateWord) []TranslateWord {
 	for i, v := range english_words {
-		if strings.Contains(v.PartOfTheSpeache, "verb") && strings.HasPrefix(v.Translate, "to ") {
+		if strings.Contains(v.Word.PartOfTheSpeache, "verb") && strings.HasPrefix(v.Translate, "to ") {
 			english_words[i].Translate = strings.TrimLeft(english_words[i].Translate, "to ")
 		}
 	}
 	return english_words
 }
 
-func searchWord(lookingWord Word) EnglishFrench {
-	// initialize the struct slices
-
-	var englishWords []EnglishWord
-	var translate []string
-
-	// initialize the Collector
-	c := colly.NewCollector()
-
-	// set a valid User-Agent header
-	c.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-
-	// iterating over the list of industry card
-	// HTML elements
-
-	c.OnHTML("div.dpos-h.di-head.normal-entry", func(e *colly.HTMLElement) {
-		texts := strings.Split(e.Text, "\u00a0")
-		word := EnglishWord{
-			Word:             strings.Trim(texts[0], " "),
-			PartOfTheSpeache: strings.Trim(texts[1], " "),
-			Transcripton:     strings.Trim(texts[2], " "),
-		}
-		englishWords = append(englishWords, word)
-	})
-
-	c.OnHTML("div.def-body.ddef_b.ddef_b-t", func(e *colly.HTMLElement) {
-		texts := strings.Split(e.Text, "\n")
-		translate = append(translate, strings.Trim(texts[1], " "))
-	})
-
-	// connect to the target site
-	var url string
-	if lookingWord.Language == "en" {
-		url = "https://dictionary.cambridge.org/dictionary/english-french/" + lookingWord.WordToTranslate
-	} else {
-		url = "https://dictionary.cambridge.org/dictionary/french-english/" + lookingWord.WordToTranslate
-	}
-	c.Visit(url)
-
-	for i := 0; i < len(translate) && i < len(englishWords); i++ {
-		englishWords[i].Translate = translate[i]
-	}
-
-	word_to_add := getWordByPartOfSpeaches(englishWords, lookingWord.PartOfTheSpeache)
-	word_to_add = deleteToIsWordVerbEnglish(word_to_add)
+func export(word_to_add EnglishFrenchRussian) {
 	// --- export to CSV ---
 
 	// open the output CSV file
-	csvFile, csvErr := os.Create(word_to_add[0].Word + ".csv")
+	csvFile, csvErr := os.Create(word_to_add.English.Word.WordToTranslate + ".csv")
 	// if the file creation fails
 	if csvErr != nil {
 		log.Fatalln("Failed to create the output CSV file", csvErr)
@@ -148,29 +137,34 @@ func searchWord(lookingWord Word) EnglishFrench {
 		"word",
 		"part of speaches",
 		"transcription",
-		"In French",
+		"translate",
 	}
 	writer.Write(headers)
 
 	// store each Industry product in the
 	// output CSV file
-	for _, word := range word_to_add {
-		// convert the Industry instance to
-		// a slice of strings
-		record := []string{
-			word.Word,
-			word.PartOfTheSpeache,
-			word.Transcripton,
-			word.Translate,
-		}
-		// add a new CSV record
-		writer.Write(record)
+
+	record := []string{
+		word_to_add.English.Word.WordToTranslate,
+		word_to_add.English.Word.PartOfTheSpeache,
+		word_to_add.English.Word.Transcripton,
+		word_to_add.English.Translate,
+		word_to_add.French.Word.WordToTranslate,
+		word_to_add.French.Word.PartOfTheSpeache,
+		word_to_add.French.Word.Transcripton,
+		word_to_add.French.Translate,
+		word_to_add.Russian.Word.WordToTranslate,
+		word_to_add.Russian.Word.PartOfTheSpeache,
+		word_to_add.Russian.Word.Transcripton,
+		word_to_add.Russian.Translate,
 	}
+	// add a new CSV record
+	writer.Write(record)
 
 	// --- export to JSON ---
 
 	// open the output JSON file
-	jsonFile, jsonErr := os.Create(word_to_add[0].Word + ".json")
+	jsonFile, jsonErr := os.Create(word_to_add.English.Word.WordToTranslate + ".json")
 	if jsonErr != nil {
 		log.Fatalln("Failed to create the output JSON file", jsonErr)
 	}
@@ -180,9 +174,75 @@ func searchWord(lookingWord Word) EnglishFrench {
 
 	// write the JSON string to file
 	jsonFile.Write(jsonString)
+}
 
-	var en_fr EnglishFrench
-	return en_fr
+func searchWord(lookingWord WordInfo) []TranslateWord {
+	// initialize the struct slices
+
+	var words []TranslateWord
+	var translate []string
+
+	// initialize the Collector
+	c := colly.NewCollector()
+
+	// set a valid User-Agent header
+	c.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+
+	// iterating over the list of industry card
+	// HTML elements
+
+	c.OnHTML("div.dpos-h.di-head.normal-entry", func(e *colly.HTMLElement) {
+		texts := strings.Split(e.Text, "\u00a0")
+		word := TranslateWord{
+			Word: WordInfo{
+				WordToTranslate:  strings.Trim(texts[0], " "),
+				PartOfTheSpeache: strings.Trim(texts[1], " "),
+				Transcripton:     strings.Trim(texts[2], " "),
+				Lang:             lookingWord.Lang,
+			},
+		}
+		words = append(words, word)
+	})
+
+	c.OnHTML("div.def-body.ddef_b.ddef_b-t", func(e *colly.HTMLElement) {
+		texts := strings.Split(e.Text, "\n")
+		translate = append(translate, strings.Trim(texts[1], " "))
+	})
+
+	c.OnHTML("div.def-body.ddef_b", func(e *colly.HTMLElement) {
+		if lookingWord.Lang == english_russian {
+			texts := strings.Split(e.Text, "\n")
+			translate = append(translate, strings.Trim(texts[2], " "))
+		}
+
+	})
+
+	// connect to the target site
+	var url string
+	switch lookingWord.Lang {
+	case english_french:
+		url = "https://dictionary.cambridge.org/dictionary/english-french/" + lookingWord.WordToTranslate
+	case french_english:
+		url = "https://dictionary.cambridge.org/dictionary/french-english/" + lookingWord.WordToTranslate
+	case english_russian:
+		url = "https://dictionary.cambridge.org/dictionary/english-russian/" + lookingWord.WordToTranslate
+	default:
+		url = ""
+	}
+	c.Visit(url)
+
+	if lookingWord.Lang == english_russian {
+		words = append(words, TranslateWord{
+			Word: lookingWord,
+		})
+	}
+	for i := 0; i < len(translate) && i < len(words); i++ {
+		words[i].Translate = translate[i]
+	}
+	word_to_add := getWordByPartOfSpeaches(words, lookingWord.PartOfTheSpeache)
+	word_to_add = deleteToIsWordVerbEnglish(word_to_add)
+
+	return word_to_add
 }
 
 func main() {
@@ -192,7 +252,43 @@ func main() {
 
 	words_in_file := readWordsFromFile(fileToRead)
 	for _, v := range words_in_file {
-		searchWord(v)
+		word_to_add_first := searchWord(v)
+
+		word_to_add_second := searchWord(WordInfo{
+			WordToTranslate:  word_to_add_first[0].Translate,
+			PartOfTheSpeache: v.PartOfTheSpeache,
+			Lang:             setTranslateLanguages(word_to_add_first[0].Word.Lang),
+		})
+		word_to_add_second[0].Translate = word_to_add_first[0].Word.WordToTranslate
+
+		var word_to_add_third []TranslateWord
+		if word_to_add_first[0].Word.Lang == english_french {
+			word_to_add_third = searchWord(WordInfo{
+				WordToTranslate:  word_to_add_first[0].Translate,
+				PartOfTheSpeache: v.PartOfTheSpeache,
+				Lang:             english_russian,
+			})
+		} else {
+			word_to_add_third = searchWord(WordInfo{
+				WordToTranslate:  word_to_add_second[0].Word.WordToTranslate,
+				PartOfTheSpeache: v.PartOfTheSpeache,
+				Lang:             english_russian,
+			})
+		}
+		var efr EnglishFrenchRussian
+
+		if word_to_add_first[0].Word.Lang == english_french {
+			efr.English = word_to_add_first[0]
+			efr.French = word_to_add_second[0]
+			efr.Russian = word_to_add_third[0]
+		} else {
+			efr.French = word_to_add_first[0]
+			efr.English = word_to_add_second[0]
+			efr.Russian = word_to_add_third[0]
+		}
+
+		export(efr)
+
 	}
 
 }
