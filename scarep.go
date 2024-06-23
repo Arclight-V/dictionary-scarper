@@ -17,8 +17,7 @@ import (
 // definr some data structures
 // to store the scraped data
 type EnglishWord struct {
-	Word, PartOfTheSpeache, Transcripton string
-	Translate                            []string
+	Word, PartOfTheSpeache, Transcripton, Translate string
 }
 
 type FrenchWord struct {
@@ -75,8 +74,7 @@ func searchWord(lookingWord Word) EnglishFrench {
 	// initialize the struct slices
 
 	var englishWords []EnglishWord
-	var words, part_of_the_speaches, transcriptons []string
-	var translate [][]string
+	var translate []string
 
 	// initialize the Collector
 	c := colly.NewCollector()
@@ -87,34 +85,24 @@ func searchWord(lookingWord Word) EnglishFrench {
 	// iterating over the list of industry card
 	// HTML elements
 
-	c.OnHTML("h2.tw-bw.dhw.dpos-h_hw.di-title", func(e *colly.HTMLElement) {
-		text := e.Text
-		if text != "" {
-			words = append(words, text)
+	c.OnHTML("div.dpos-h.di-head.normal-entry", func(e *colly.HTMLElement) {
+		texts := strings.Split(e.Text, "\u00a0")
+		word := EnglishWord{
+			Word:             strings.Trim(texts[0], " "),
+			PartOfTheSpeache: strings.Trim(texts[1], " "),
+			Transcripton:     strings.Trim(texts[2], " "),
 		}
+		englishWords = append(englishWords, word)
 	})
 
-	c.OnHTML("span.pos.dpos", func(e *colly.HTMLElement) {
-		text := e.Text
-		if text != "" {
-			part_of_the_speaches = append(part_of_the_speaches, text)
-		}
+	c.OnHTML("div.def-body.ddef_b.ddef_b-t", func(e *colly.HTMLElement) {
+		texts := strings.Split(e.Text, "\n")
+		translate = append(translate, strings.Trim(texts[1], " "))
 	})
 
-	c.OnHTML("span.pron-info.dpron-info", func(e *colly.HTMLElement) {
-		text := e.Text
-		if text != "" {
-			transcriptons = append(transcriptons, text)
-		}
-	})
-
-	c.OnHTML("span.trans.dtrans.lmr--5", func(e *colly.HTMLElement) {
-		text := e.Text
-		texts := strings.Split(text, "/")
-		if text != "" {
-			translate = append(translate, texts)
-		}
-	})
+	for i := 0; i < len(translate) && i < len(englishWords); i++ {
+		englishWords[i].Translate = translate[i]
+	}
 
 	// connect to the target site
 	var url string
@@ -124,25 +112,6 @@ func searchWord(lookingWord Word) EnglishFrench {
 		url = "https://dictionary.cambridge.org/dictionary/french-english/" + lookingWord.WordToTranslate
 	}
 	c.Visit(url)
-
-	for _, w := range words {
-		word := EnglishWord{
-			Word: w,
-		}
-		englishWords = append(englishWords, word)
-	}
-
-	for i := 0; i < len(part_of_the_speaches); i++ {
-		englishWords[i].PartOfTheSpeache = part_of_the_speaches[i]
-	}
-
-	for i := 0; i < len(transcriptons); i++ {
-		englishWords[i].Transcripton = transcriptons[i]
-	}
-
-	for i := 0; i < len(translate); i++ {
-		englishWords[i].Translate = translate[i]
-	}
 
 	word_to_add := getWordByPartOfSpeaches(englishWords, lookingWord.PartOfTheSpeache)
 	// --- export to CSV ---
@@ -181,7 +150,7 @@ func searchWord(lookingWord Word) EnglishFrench {
 			word.Word,
 			word.PartOfTheSpeache,
 			word.Transcripton,
-			word.Translate[0],
+			word.Translate,
 		}
 		// add a new CSV record
 		writer.Write(record)
