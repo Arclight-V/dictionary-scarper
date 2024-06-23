@@ -65,6 +65,7 @@ func getWordByPartOfSpeaches(english_words []EnglishWord, part_of_speaches strin
 	for _, v := range english_words {
 		if v.PartOfTheSpeache == part_of_speaches {
 			word = append(word, v)
+			break
 		}
 	}
 	return word
