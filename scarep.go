@@ -212,21 +212,20 @@ func searchWord(lookingWord WordInfo) []TranslateWord {
 	})
 
 	c.OnHTML("div.pr.entry-body__el", func(e *colly.HTMLElement) {
-		if lookingWord.Lang == english_russian {
-			if part_of_speaches := e.ChildText("span.pos.dpos"); strings.Contains(part_of_speaches, lookingWord.PartOfTheSpeache) {
-				word := TranslateWord{
-					Word: WordInfo{
-						WordToTranslate:  e.ChildText("span.hw.dhw"),
-						PartOfTheSpeache: part_of_speaches,
-						Transcripton:     e.ChildText("span.pron-info.dpron-info"),
-						Lang:             lookingWord.Lang,
-					},
-					Translate: strings.Split(e.ChildText("span.trans.dtrans.dtrans-se"), "\n")[0],
-				}
-				if len(words) == 0 {
+		if len(words) == 0 {
+			if lookingWord.Lang == english_russian {
+				if part_of_speaches := e.ChildText("span.pos.dpos"); strings.Contains(part_of_speaches, lookingWord.PartOfTheSpeache) {
+					word := TranslateWord{
+						Word: WordInfo{
+							WordToTranslate:  e.ChildText("span.hw.dhw"),
+							PartOfTheSpeache: part_of_speaches,
+							Transcripton:     e.ChildText("span.pron-info.dpron-info"),
+							Lang:             lookingWord.Lang,
+						},
+						Translate: strings.Split(e.ChildText("div.def-body.ddef_b"), "\n")[0],
+					}
 					words = append(words, word)
 				}
-
 			}
 		}
 	})
