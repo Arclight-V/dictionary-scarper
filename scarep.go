@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -34,8 +35,8 @@ type WordInfo struct {
 }
 
 type TranslateWord struct {
-	Word      WordInfo
-	Translate string
+	Word                      WordInfo
+	Translate, AdditionalInfo string
 }
 
 type EnglishFrenchRussian struct {
@@ -83,36 +84,27 @@ func readWordsFromFile(inputFile *string) []WordInfo {
 	var words []WordInfo
 	for fileScanner.Scan() {
 		word_info := strings.Fields(fileScanner.Text())
-		word := WordInfo{
-			WordToTranslate:  word_info[0],
-			PartOfTheSpeache: word_info[1],
-			Lang:             checkLanguages(word_info[2]),
+		if len(word_info) > 0 {
+			word := WordInfo{
+				WordToTranslate:  word_info[0],
+				PartOfTheSpeache: word_info[1],
+				Lang:             checkLanguages(word_info[2]),
+			}
+			words = append(words, word)
 		}
-		words = append(words, word)
+
 	}
 	readFile.Close()
 	return words
 
 }
 
-func getWordByPartOfSpeaches(english_words []TranslateWord, part_of_speaches string) []TranslateWord {
-	var word []TranslateWord
-	for _, v := range english_words {
-		if strings.Contains(v.Word.PartOfTheSpeache, part_of_speaches) {
-			word = append(word, v)
-			break
-		}
-	}
-	return word
-}
-
-func deleteToIsWordVerbEnglish(english_words []TranslateWord) []TranslateWord {
+func deleteToIsWordVerbEnglish(english_words []TranslateWord) {
 	for i, v := range english_words {
 		if strings.Contains(v.Word.PartOfTheSpeache, "verb") && strings.HasPrefix(v.Translate, "to ") {
 			english_words[i].Translate = strings.TrimLeft(english_words[i].Translate, "to ")
 		}
 	}
-	return english_words
 }
 
 func export(word_to_add EnglishFrenchRussian) {
@@ -191,7 +183,6 @@ func searchWord(lookingWord WordInfo) []TranslateWord {
 	// initialize the struct slices
 
 	var words []TranslateWord
-	var translate []string
 
 	// initialize the Collector
 	c := colly.NewCollector()
@@ -202,30 +193,42 @@ func searchWord(lookingWord WordInfo) []TranslateWord {
 	// iterating over the list of industry card
 	// HTML elements
 
-	c.OnHTML("div.dpos-h.di-head.normal-entry", func(e *colly.HTMLElement) {
-		texts := strings.Split(e.Text, "\u00a0")
-		word := TranslateWord{
-			Word: WordInfo{
-				WordToTranslate:  strings.Trim(texts[0], " "),
-				PartOfTheSpeache: strings.Trim(texts[1], " "),
-				Transcripton:     strings.Trim(texts[2], " "),
-				Lang:             lookingWord.Lang,
-			},
+	c.OnHTML("span.link.dlink", func(e *colly.HTMLElement) {
+		if len(words) == 0 {
+			if part_of_speaches := e.ChildText("div.dpos-g.hdib"); strings.Contains(part_of_speaches, lookingWord.PartOfTheSpeache) {
+				word := TranslateWord{
+					Word: WordInfo{
+						WordToTranslate:  e.ChildText("h2"),
+						PartOfTheSpeache: part_of_speaches,
+						Transcripton:     e.ChildText("span.pron-info.dpron-info"),
+						Lang:             lookingWord.Lang,
+					},
+					Translate: strings.Split(e.ChildText("div.def-body.ddef_b.ddef_b-t"), "\n")[0],
+				}
+				words = append(words, word)
+
+			}
 		}
-		words = append(words, word)
 	})
 
-	c.OnHTML("div.def-body.ddef_b.ddef_b-t", func(e *colly.HTMLElement) {
-		texts := strings.Split(e.Text, "\n")
-		translate = append(translate, strings.Trim(texts[1], " "))
-	})
-
-	c.OnHTML("div.def-body.ddef_b", func(e *colly.HTMLElement) {
+	c.OnHTML("div.pr.entry-body__el", func(e *colly.HTMLElement) {
 		if lookingWord.Lang == english_russian {
-			texts := strings.Split(e.Text, "\n")
-			translate = append(translate, strings.Trim(texts[2], " "))
-		}
+			if part_of_speaches := e.ChildText("span.pos.dpos"); strings.Contains(part_of_speaches, lookingWord.PartOfTheSpeache) {
+				word := TranslateWord{
+					Word: WordInfo{
+						WordToTranslate:  e.ChildText("span.hw.dhw"),
+						PartOfTheSpeache: part_of_speaches,
+						Transcripton:     e.ChildText("span.pron-info.dpron-info"),
+						Lang:             lookingWord.Lang,
+					},
+					Translate: strings.Split(e.ChildText("span.trans.dtrans.dtrans-se"), "\n")[0],
+				}
+				if len(words) == 0 {
+					words = append(words, word)
+				}
 
+			}
+		}
 	})
 
 	// connect to the target site
@@ -247,13 +250,10 @@ func searchWord(lookingWord WordInfo) []TranslateWord {
 			Word: lookingWord,
 		})
 	}
-	for i := 0; i < len(translate) && i < len(words); i++ {
-		words[i].Translate = translate[i]
-	}
-	word_to_add := getWordByPartOfSpeaches(words, lookingWord.PartOfTheSpeache)
-	word_to_add = deleteToIsWordVerbEnglish(word_to_add)
 
-	return word_to_add
+	deleteToIsWordVerbEnglish(words)
+
+	return words
 }
 
 func main() {
@@ -266,28 +266,43 @@ func main() {
 
 	for _, v := range words_in_file {
 		word_to_add_first := searchWord(v)
-
+		var additional_info string
+		if strings.Contains(word_to_add_first[0].Translate, "/") {
+			additional_info = word_to_add_first[0].Translate
+			word_to_add_first[0].Translate = word_to_add_first[0].Translate[:strings.Index(word_to_add_first[0].Translate, "/")]
+			word_to_add_first[0].AdditionalInfo = additional_info
+		}
+		var word_to_translate_for_second string
+		if strings.Contains(word_to_add_first[0].Translate, "[") {
+			word_to_translate_for_second = word_to_add_first[0].Translate[:strings.Index(word_to_add_first[0].Translate, "[")]
+		} else {
+			word_to_translate_for_second = word_to_add_first[0].Translate
+		}
 		word_to_add_second := searchWord(WordInfo{
-			WordToTranslate:  word_to_add_first[0].Translate,
+			WordToTranslate:  word_to_translate_for_second,
 			PartOfTheSpeache: v.PartOfTheSpeache,
 			Lang:             setTranslateLanguages(word_to_add_first[0].Word.Lang),
 		})
-		word_to_add_second[0].Translate = word_to_add_first[0].Word.WordToTranslate
 
-		var word_to_add_third []TranslateWord
+		var word_to_translate_for_russian string
 		if word_to_add_first[0].Word.Lang == english_french {
-			word_to_add_third = searchWord(WordInfo{
-				WordToTranslate:  word_to_add_first[0].Translate,
-				PartOfTheSpeache: v.PartOfTheSpeache,
-				Lang:             english_russian,
-			})
+			word_to_translate_for_russian = word_to_add_first[0].Word.WordToTranslate
+
 		} else {
-			word_to_add_third = searchWord(WordInfo{
-				WordToTranslate:  word_to_add_second[0].Word.WordToTranslate,
-				PartOfTheSpeache: v.PartOfTheSpeache,
-				Lang:             english_russian,
-			})
+			word_to_translate_for_russian = word_to_add_second[0].Word.WordToTranslate
 		}
+
+		word_to_add_third := searchWord(WordInfo{
+			WordToTranslate:  word_to_translate_for_russian,
+			PartOfTheSpeache: v.PartOfTheSpeache,
+			Lang:             english_russian,
+		})
+
+		if len(word_to_add_first) == 0 || len(word_to_add_second) == 0 || len(word_to_add_third) == 0 {
+			fmt.Println("ERROR", v, " not add")
+			continue
+		}
+
 		var efr EnglishFrenchRussian
 
 		if word_to_add_first[0].Word.Lang == english_french {
@@ -320,6 +335,6 @@ func main() {
 		if restErr != nil {
 			log.Fatal(restErr)
 		}
+		fmt.Println(v)
 	}
-
 }
